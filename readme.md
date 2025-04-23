@@ -66,7 +66,6 @@ on_change = "systemctl restart app_2.service"
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `path` | Path | required | Local checkout; must already exist & have the remote set |
-| `remote` | String | "origin" | Remote name to fetch from |
 | `branch` | String | "master" | Branch ref to watch |
 | `interval` | u64 seconds | 60 | Poll period |
 | `on_change` | String | (none) | Shell snippet executed after a successful fast‑forward |
@@ -126,6 +125,6 @@ journalctl -u rustpdater -f   # live logs
 
 ## 📄 License
 
-Licensed under MIT OR Apache‑2.0 at your choice.
+Licensed under MIT
 
-© 2025 Your Name or Organisation. See LICENSE for details.
+© 2025 TangerineCoding. See LICENSE for details.
