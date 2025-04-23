@@ -32,16 +32,6 @@ rustpdater --config /etc/rustpdater.toml
 
 Add a systemd unit to keep it running after reboots (see below).
 
-## 💻 Installation options
-
-| Method | Command |
-|--------|---------|
-| Cargo (recommended) | `cargo install rustpdater --locked` |
-| Static MUSL build | `cargo install rustpdater --locked --features musl` |
-| Pre‑built binary | Download from the [Releases] page and drop into `/usr/local/bin` |
-
-> 💡 `rustpdater -V` prints the version and commit hash.
-
 ## ⚙️ Configuration file (rustpdater.toml)
 
 ```toml
