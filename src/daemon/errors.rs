@@ -1,4 +1,5 @@
 use thiserror::Error;
+use tokio::task::JoinError;
 
 pub type Result<T> = std::result::Result<T, WatchError>;
 
@@ -10,4 +11,6 @@ pub enum WatchError {
     Io(#[from] std::io::Error),
     #[error("toml error: {0}")]
     Toml(#[from] toml::de::Error),
+    #[error("task join error: {0}")]
+    Join(#[from] JoinError),
 }
