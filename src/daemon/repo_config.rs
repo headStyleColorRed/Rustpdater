@@ -5,7 +5,7 @@ use serde::Deserialize;
 fn default_branch() -> String { "master".to_string() }
 fn default_interval() -> u64 { 300 /*5 minutes in seconds */ }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct RepoCfg {
     /// Local checkout path
     pub path: PathBuf,

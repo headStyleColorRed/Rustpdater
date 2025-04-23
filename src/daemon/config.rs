@@ -2,7 +2,7 @@ use super::repo_config::RepoCfg;
 use super::errors::Result;
 use serde::Deserialize;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct Config {
     pub repos: Vec<RepoCfg>
 }
