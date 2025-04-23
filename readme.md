@@ -109,9 +109,6 @@ journalctl -u rustpdater -f   # live logs
 - 🌐 Webhook mode (listen on HTTP instead of polling)
 - 📊 Native Prometheus metrics (`/metrics`)
 - 🔄 Back‑pressure / concurrency limit for heavy build hooks
-- ✅ Signed commits & tag verification
-
-> 👥 Contributions welcome — see CONTRIBUTING.md
 
 ## 📄 License
 
