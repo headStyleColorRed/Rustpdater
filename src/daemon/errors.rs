@@ -7,6 +7,8 @@ pub type Result<T> = std::result::Result<T, WatchError>;
 pub enum WatchError {
     #[error("git error: {0}")]
     Git(#[from] git2::Error),
+    #[error("config error: could not load config file '{path}' - {source}")]
+    Config { path: String, source: std::io::Error },
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("toml error: {0}")]
