@@ -107,8 +107,8 @@ journalctl -u rustpdater -f   # live logs
 
 ## 🗺️ Roadmap
 
+- 📬 Send notifications when a repo is updated
 - 🌐 Webhook mode (listen on HTTP instead of polling)
-- 📊 Native Prometheus metrics (`/metrics`)
 - 🔄 Back‑pressure / concurrency limit for heavy build hooks
 
 ## 📄 License
