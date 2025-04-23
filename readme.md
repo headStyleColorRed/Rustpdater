@@ -106,7 +106,7 @@ journalctl -u rustpdater -f   # live logs
 > 🐛 Enable `RUST_LOG=debug` for verbose output (uses env_logger)
 
 ## 🗺️ Roadmap
-
+- Adding tests
 - 📬 Send notifications when a repo is updated
 - 🌐 Webhook mode (listen on HTTP instead of polling)
 - 🔄 Back‑pressure / concurrency limit for heavy build hooks
