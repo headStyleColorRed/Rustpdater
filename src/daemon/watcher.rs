@@ -54,12 +54,11 @@ fn try_update(repo: &RepoCfg) -> Result<()> {
     repository.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
 
     if let Some(cmd) = &repo.on_change {
-        let status = Command::new("sh")
+        Command::new("sh")
             .arg("-c")
             .arg(cmd)
             .current_dir(&repo.path)
             .status()?;
-        println!("Ran '{cmd}', exit: {status}");
     }
 
     Ok(())
