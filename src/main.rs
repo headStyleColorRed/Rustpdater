@@ -1,3 +1,5 @@
+mod daemon;
+
 use clap::Parser;
 use std::error::Error;
 
