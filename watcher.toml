@@ -1,0 +1,5 @@
+[[repos]]
+path      = "/srv/app_1"
+branch    = "main"
+interval  = 30
+on_change = "echo 'changed'"
