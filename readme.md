@@ -23,11 +23,12 @@
 # 1 – Grab the code & build a release binary
 cargo install --git https://github.com/headStyleColorRed/Rustpdater --locked
 
-# 2 – Create /etc/rustpdater.toml
-cp watcher.toml.example /etc/rustpdater.toml
+# 2 – Create the config file somewhere like /etc/rustpdater.toml (example file below)
+vim /etc/rustpdater.toml
 
 # 3 – Run once to verify
-rustpdater --config /etc/rustpdater.toml
+# The binary will be installed to ~/.cargo/bin
+~/.cargo/bin/rustpdater -c /etc/rustpdater.toml
 ```
 
 Add a systemd unit to keep it running after reboots (see below).
