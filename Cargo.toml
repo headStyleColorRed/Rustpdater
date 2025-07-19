@@ -10,3 +10,6 @@ toml        = "0.8"
 tokio       = { version = "1", features = ["full"] }
 git2        = "0.20.1"
 thiserror   = "2.0.12"
+
+[dev-dependencies]
+tempfile    = "3.8"
