@@ -1,6 +1,7 @@
 [[repos]]
 path      = "/srv/app_1"
 branch    = "main"
+remote    = "origin"
 interval  = 30
 on_change = "echo 'changed'"
 
@@ -8,6 +9,7 @@ on_change = "echo 'changed'"
 [[repos]]
 path      = "/srv/app_2"
 branch    = "master"
+remote    = "upstream"
 interval  = 30
 on_change = "echo 'changed'"
 
