@@ -17,6 +17,15 @@
 - 🔧 Plays nicely with systemd, journald and container orchestrators
 - 🦀 Written in safe Rust 2021, no external runtime
 
+## 📦 Installation
+
+```bash
+# 1 - Install cargo
+apt install cargo
+```
+
+
+
 ## 🚀 Quick start
 
 ```bash
@@ -26,9 +35,9 @@ cargo install --git https://github.com/headStyleColorRed/Rustpdater --locked
 # 2 – Create the config file somewhere like /etc/rustpdater.toml (example file below)
 vim /etc/rustpdater.toml
 
-# 3 – Run once to verify
+# 3 – Run once to verify (stdout shows info logs; errors go to stderr)
 # The binary will be installed to ~/.cargo/bin
-~/.cargo/bin/rustpdater -c /etc/rustpdater.toml
+RUST_LOG=info ~/.cargo/bin/rustpdater --config-file /etc/rustpdater.toml
 ```
 
 Add a systemd unit to keep it running after reboots (see below).
@@ -103,7 +112,7 @@ journalctl -u rustpdater -f   # live logs
 | Repo never updates | Confirm interval isn't huge, verify branch name matches remote |
 | Local changes overwritten | The watcher forces checkout; deploy from a clean clone, not your dev copy |
 
-> 🐛 Enable `RUST_LOG=debug` for verbose output (uses env_logger)
+> 🐛 Enable `RUST_LOG=debug` for verbose output (integrated via env_logger)
 
 ## 🗺️ Roadmap
 - Adding tests

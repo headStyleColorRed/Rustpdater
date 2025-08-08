@@ -1,18 +1,21 @@
 use super::errors::Result;
 use super::repo_config::RepoCfg;
-use git2::Repository;
+use git2::{Repository, Cred, RemoteCallbacks};
 use std::process::Command;
 use std::time::Duration;
+use std::fs;
+use std::path::Path;
 use tokio::{task, time};
+use log::{debug, error, info};
 
 pub async fn start_watching_repos(repos: &[RepoCfg]) -> Result<()> {
     let mut tasks = Vec::new();
 
+    info!("Starting watcher with {} repos", repos.len());
+
     for repo in repos {
         let repo = repo.clone();
-        tasks.push(task::spawn(
-            async move { watch_single_repo(&repo).await },
-        ));
+        tasks.push(task::spawn(async move { watch_single_repo(&repo).await }));
     }
 
     for task in tasks {
@@ -24,36 +27,57 @@ pub async fn start_watching_repos(repos: &[RepoCfg]) -> Result<()> {
 
 async fn watch_single_repo(repo: &RepoCfg) -> Result<()> {
     let interval = Duration::from_secs(repo.interval);
+    info!("Watching repo '{}' (branch '{}') every {}s", repo.path.display(), repo.branch, repo.interval);
 
     loop {
         if let Err(error) = try_update(repo) {
-            eprintln!("watcher error on {:?}: {error}", repo.path);
+            error!("watcher error on {}: {}", repo.path.display(), error);
         }
         time::sleep(interval).await;
     }
 }
 
 fn try_update(repo: &RepoCfg) -> Result<()> {
+    debug!("Checking repo {} for updates", repo.path.display());
+
     let repository = Repository::open(&repo.path)?;
 
-    // Fetch
+    // Fetch with authentication
     let mut remote = repository.find_remote("origin")?;
-    remote.fetch(&[&repo.branch], None, None)?;
+
+    let mut callbacks = RemoteCallbacks::new();
+    callbacks.credentials(|_url, username_from_url, _allowed_types| {
+        if let Some(credentials) = read_git_credentials() {
+            // Use username from credentials file, fallback to URL username
+            let username = username_from_url.unwrap_or(&credentials.username);
+            return Cred::userpass_plaintext(username, &credentials.password);
+        }
+        Err(git2::Error::from_str("No credentials found"))
+    });
+
+    let mut fetch_options = git2::FetchOptions::new();
+    fetch_options.remote_callbacks(callbacks);
+
+    info!("Fetching '{}' for {}", repo.branch, repo.path.display());
+    remote.fetch(&[&repo.branch], Some(&mut fetch_options), None)?;
 
     // Get HEADs
     let fetch_head = repository.find_reference("FETCH_HEAD")?.target().unwrap();
     let local_head = repository.head()?.target().unwrap();
 
-    // If there's nothing new, scape
+    // If there's nothing new, escape
     if fetch_head == local_head {
+        debug!("No changes detected for {}", repo.path.display());
         return Ok(());
     };
 
     // Let's do a fast forward merge
     repository.set_head_detached(fetch_head)?;
     repository.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
+    info!("Fast-forwarded repo {} to new HEAD", repo.path.display());
 
     if let Some(cmd) = &repo.on_change {
+        info!("Running on_change hook for {}: {}", repo.path.display(), cmd);
         Command::new("sh")
             .arg("-c")
             .arg(cmd)
@@ -62,4 +86,68 @@ fn try_update(repo: &RepoCfg) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[derive(Debug)]
+struct GitCredentials {
+    username: String,
+    password: String,
+}
+
+fn read_git_credentials() -> Option<GitCredentials> {
+    let credentials_path = std::env::var("HOME")
+        .ok()
+        .map(|home| format!("{}/.git-credentials", home))
+        .unwrap_or_else(|| "~/.git-credentials".to_string());
+
+
+
+    // Handle tilde expansion manually since we don't want to add shellexpand dependency
+    let credentials_path = if credentials_path.starts_with("~/") {
+        std::env::var("HOME")
+            .ok()
+            .map(|home| format!("{}/{}", home, &credentials_path[2..]))
+            .unwrap_or(credentials_path)
+    } else {
+        credentials_path
+    };
+
+    if !Path::new(&credentials_path).exists() {
+        return None;
+    }
+
+    let content = match fs::read_to_string(&credentials_path) {
+        Ok(content) => content,
+        Err(_) => return None,
+    };
+
+    // Parse git-credentials format: https://username:token@hostname
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        if let Some(credentials) = parse_git_credential_line(line) {
+            return Some(credentials);
+        }
+    }
+
+    None
+}
+
+fn parse_git_credential_line(line: &str) -> Option<GitCredentials> {
+    // Handle format: https://username:token@hostname
+    if let Some(auth_part) = line.split("://").nth(1) {
+        if let Some(at_pos) = auth_part.find('@') {
+            let auth = &auth_part[..at_pos];
+            if let Some(colon_pos) = auth.find(':') {
+                let username = auth[..colon_pos].to_string();
+                let password = auth[colon_pos + 1..].to_string();
+                return Some(GitCredentials { username, password });
+            }
+        }
+    }
+
+    None
 }
