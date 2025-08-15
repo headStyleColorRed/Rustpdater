@@ -2,9 +2,7 @@ use super::errors::Result;
 use super::repo_config::RepoCfg;
 use git2::{Repository, Cred, RemoteCallbacks, Error as GitError};
 use std::process::Command;
-use std::fs;
 use std::path::Path;
-use std::io::{self, Write};
 use log::{debug, info, warn};
 
 pub fn try_update(repo: &RepoCfg) -> Result<()> {
@@ -43,13 +41,13 @@ pub fn try_update(repo: &RepoCfg) -> Result<()> {
                 }
             }
 
-            // If SSH authentication fails, fall back to git-credentials
-            warn!("SSH authentication failed, falling back to git-credentials");
-            handle_https_credentials(username_from_url)
+            // If SSH authentication fails, return an error
+            warn!("SSH authentication failed for {}", url);
+            Err(GitError::from_str("SSH authentication failed"))
         } else {
-            // HTTPS URL - use git-credentials
-            info!("Using git-credentials for HTTPS URL: {}", url);
-            handle_https_credentials(username_from_url)
+            // HTTPS URLs are not supported
+            warn!("HTTPS URLs are not supported. Only SSH URLs (git@ or ssh://) are allowed: {}", url);
+            Err(GitError::from_str("HTTPS URLs are not supported. Only SSH URLs are allowed"))
         }
     });
 
@@ -174,172 +172,4 @@ fn extract_host_from_ssh_url(url: &str) -> String {
     }
     // Fallback: return the whole url
     url.to_string()
-}
-
-fn handle_https_credentials(username_from_url: Option<&str>) -> std::result::Result<Cred, GitError> {
-    match read_git_credentials() {
-        Ok(Some(credentials)) => {
-            // Use username from credentials file, fallback to URL username
-            let username = username_from_url.unwrap_or(&credentials.username);
-            Cred::userpass_plaintext(username, &credentials.password)
-        }
-        Ok(None) => {
-            // File exists but no valid credentials found
-            warn!("No valid credentials found in ~/.git-credentials, prompting for new credentials");
-            match prompt_and_create_credentials() {
-                Ok(credentials) => {
-                    let username = username_from_url.unwrap_or(&credentials.username);
-                    Cred::userpass_plaintext(username, &credentials.password)
-                }
-                Err(_) => Err(GitError::from_str("Failed to get credentials from user"))
-            }
-        }
-        Err(CredentialsError::FileNotFound) => {
-            // File doesn't exist, prompt to create it
-            warn!("~/.git-credentials doesn't exist, prompting to create it");
-            match prompt_and_create_credentials() {
-                Ok(credentials) => {
-                    let username = username_from_url.unwrap_or(&credentials.username);
-                    Cred::userpass_plaintext(username, &credentials.password)
-                }
-                Err(_) => Err(GitError::from_str("Failed to create credentials file"))
-            }
-        }
-        Err(CredentialsError::ReadError) => {
-            // File exists but couldn't be read
-            Err(GitError::from_str("Could not read ~/.git-credentials"))
-        }
-    }
-}
-
-#[derive(Debug)]
-struct GitCredentials {
-    username: String,
-    password: String,
-}
-
-#[derive(Debug)]
-enum CredentialsError {
-    FileNotFound,
-    ReadError,
-}
-
-fn prompt_and_create_credentials() -> std::result::Result<GitCredentials, Box<dyn std::error::Error>> {
-    println!("\n=== Git Credentials Setup ===");
-    println!("The ~/.git-credentials file is missing or empty.");
-    println!("This file is needed to authenticate with GitHub repositories.");
-
-    // Ask if user wants to create the file
-    print!("Would you like to create the ~/.git-credentials file? (y/n): ");
-    io::stdout().flush()?;
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-
-    if !input.trim().to_lowercase().starts_with('y') {
-        return Err("User declined to create credentials file".into());
-    }
-
-    // Get username
-    print!("Enter your GitHub username: ");
-    io::stdout().flush()?;
-    let mut username = String::new();
-    io::stdin().read_line(&mut username)?;
-    let username = username.trim().to_string();
-
-    if username.is_empty() {
-        return Err("Username cannot be empty".into());
-    }
-
-    // Get token
-    print!("Enter your GitHub personal access token: ");
-    io::stdout().flush()?;
-    let mut token = String::new();
-    io::stdin().read_line(&mut token)?;
-    let token = token.trim().to_string();
-
-    if token.is_empty() {
-        return Err("Token cannot be empty".into());
-    }
-
-    // Create credentials
-    let credentials = GitCredentials {
-        username: username.clone(),
-        password: token.clone(),
-    };
-
-    // Create the file
-    let credentials_path = get_credentials_path();
-    let credentials_content = format!("https://{}:{}@github.com\n", username, token);
-
-    // Create parent directory if it doesn't exist
-    if let Some(parent) = Path::new(&credentials_path).parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    fs::write(&credentials_path, credentials_content)?;
-
-    // Set proper permissions (read/write for owner only)
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&credentials_path)?.permissions();
-        perms.set_mode(0o600);
-        fs::set_permissions(&credentials_path, perms)?;
-    }
-
-    println!("✓ Created ~/.git-credentials with your credentials");
-    println!("✓ File permissions set to owner-only access");
-
-    Ok(credentials)
-}
-
-fn get_credentials_path() -> String {
-    std::env::var("HOME")
-        .ok()
-        .map(|home| format!("{}/.git-credentials", home))
-        .unwrap_or_else(|| "~/.git-credentials".to_string())
-}
-
-fn read_git_credentials() -> std::result::Result<Option<GitCredentials>, CredentialsError> {
-    let credentials_path = get_credentials_path();
-
-    if !Path::new(&credentials_path).exists() {
-        return Err(CredentialsError::FileNotFound);
-    }
-
-    let content = match fs::read_to_string(&credentials_path) {
-        Ok(content) => content,
-        Err(_) => return Err(CredentialsError::ReadError),
-    };
-
-    // Parse git-credentials format: https://username:token@hostname
-    for line in content.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-
-        if let Some(credentials) = parse_git_credential_line(line) {
-            return Ok(Some(credentials));
-        }
-    }
-
-    Ok(None)
-}
-
-fn parse_git_credential_line(line: &str) -> Option<GitCredentials> {
-    // Handle format: https://username:token@hostname
-    if let Some(auth_part) = line.split("://").nth(1) {
-        if let Some(at_pos) = auth_part.find('@') {
-            let auth = &auth_part[..at_pos];
-            if let Some(colon_pos) = auth.find(':') {
-                let username = auth[..colon_pos].to_string();
-                let password = auth[colon_pos + 1..].to_string();
-                return Some(GitCredentials { username, password });
-            }
-        }
-    }
-
-    None
 }

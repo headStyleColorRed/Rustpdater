@@ -26,6 +26,12 @@ async fn watch_single_repo(repo: &RepoCfg) -> Result<()> {
     let interval = Duration::from_secs(repo.interval);
     info!("Watching repo '{}' (branch '{}') every {}s", repo.path.display(), repo.branch, repo.interval);
 
+    // Let's first test the SSH connection
+    if let Err(e) = git_ops::test_ssh_connection(repo.path.to_str().unwrap_or_default(), None) {
+        error!("SSH connection test failed for {}: {}", repo.path.display(), e);
+        return Err(super::errors::WatchError::Git(git2::Error::from_str(&e)));
+    }
+
     loop {
         if let Err(error) = git_ops::try_update(repo) {
             error!("watcher error on {}: {}", repo.path.display(), error);
