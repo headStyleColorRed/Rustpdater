@@ -5,7 +5,7 @@ use std::process::Command;
 use std::path::Path;
 use std::fs;
 use std::env;
-use log::{debug, info, warn};
+use log::{debug, info};
 
 pub fn try_update(repo: &RepoCfg) -> Result<()> {
     debug!("Checking repo {} for updates", repo.path.display());
@@ -16,41 +16,9 @@ pub fn try_update(repo: &RepoCfg) -> Result<()> {
     let mut remote = repository.find_remote("origin")?;
 
     let mut callbacks = RemoteCallbacks::new();
-    callbacks.credentials(|url, username_from_url, _allowed_types| {
-        // Check if this is an SSH URL
-        if url.starts_with("git@") || url.starts_with("ssh://") {
-            info!("Attempting SSH authentication for {}", url);
-
-            // Try SSH key from SSH agent first
-            if let Ok(ssh_key) = Cred::ssh_key_from_agent(username_from_url.unwrap_or("git")) {
-                info!("SSH authentication successful via SSH agent");
-                return Ok(ssh_key);
-            }
-
-            // Try default SSH key locations
-            let ssh_key_paths = [
-                format!("{}/.ssh/id_rsa", std::env::var("HOME").unwrap_or_else(|_| "~".to_string())),
-                format!("{}/.ssh/id_ed25519", std::env::var("HOME").unwrap_or_else(|_| "~".to_string())),
-                format!("{}/.ssh/id_ecdsa", std::env::var("HOME").unwrap_or_else(|_| "~".to_string())),
-            ];
-
-            for key_path in &ssh_key_paths {
-                if Path::new(key_path).exists() {
-                    if let Ok(ssh_key) = Cred::ssh_key(username_from_url.unwrap_or("git"), None, Path::new(key_path), None) {
-                        info!("SSH authentication successful with key: {}", key_path);
-                        return Ok(ssh_key);
-                    }
-                }
-            }
-
-            // If SSH authentication fails, return an error
-            warn!("SSH authentication failed for {}", url);
-            Err(GitError::from_str("SSH authentication failed"))
-        } else {
-            // HTTPS URLs are not supported
-            warn!("HTTPS URLs are not supported. Only SSH URLs (git@ or ssh://) are allowed: {}", url);
-            Err(GitError::from_str("HTTPS URLs are not supported. Only SSH URLs are allowed"))
-        }
+    callbacks.credentials(|_, username_from_url, _| {
+        // Use SSH agent for authentication
+        Cred::ssh_key_from_agent(username_from_url.unwrap_or("git"))
     });
 
     let mut fetch_options = git2::FetchOptions::new();
