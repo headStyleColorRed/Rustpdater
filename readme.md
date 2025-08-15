@@ -10,7 +10,7 @@
 
 - 📦 Multiple repositories in a single process – add as many [[repos]] blocks as you like
 - ⏰ Configurable poll interval per repo (seconds or minutes)
-- 🏃‍♂️ Blazing‑fast fast‑forward updates using git2 (libgit2 bindings)
+- 🏃‍♂️ Fast fast‑forward updates using system git commands
 - 🪝 Post‑update hook – run any shell command (build, test, systemctl restart …, Docker compose, …)
 - 🪶 Tiny footprint: a few MB RAM, near‑zero CPU while idle
 - 📥 Installs with one cargo install or a pre‑built static binary
