@@ -47,11 +47,14 @@ fn try_update(repo: &RepoCfg) -> Result<()> {
     let mut remote = repository.find_remote("origin")?;
 
     let mut callbacks = RemoteCallbacks::new();
-    callbacks.credentials(|url, username_from_url, _allowed_types| {
+        callbacks.credentials(|url, username_from_url, _allowed_types| {
         // Check if this is an SSH URL
         if url.starts_with("git@") || url.starts_with("ssh://") {
-            // Try SSH key authentication first
+            info!("Attempting SSH authentication for {}", url);
+
+            // Try SSH key from SSH agent first
             if let Ok(ssh_key) = Cred::ssh_key_from_agent(username_from_url.unwrap_or("git")) {
+                info!("SSH authentication successful via SSH agent");
                 return Ok(ssh_key);
             }
 
@@ -65,17 +68,19 @@ fn try_update(repo: &RepoCfg) -> Result<()> {
             for key_path in &ssh_key_paths {
                 if Path::new(key_path).exists() {
                     if let Ok(ssh_key) = Cred::ssh_key(username_from_url.unwrap_or("git"), None, Path::new(key_path), None) {
+                        info!("SSH authentication successful with key: {}", key_path);
                         return Ok(ssh_key);
                     }
                 }
             }
 
-            // If SSH keys don't work, try to fall back to HTTPS authentication
-            warn!("SSH authentication failed, falling back to HTTPS authentication");
-            return handle_https_credentials(username_from_url);
+            // If SSH authentication fails, fall back to git-credentials
+            warn!("SSH authentication failed, falling back to git-credentials");
+            handle_https_credentials(username_from_url)
         } else {
-            // HTTPS URL - use existing HTTPS authentication logic
-            return handle_https_credentials(username_from_url);
+            // HTTPS URL - use git-credentials
+            info!("Using git-credentials for HTTPS URL: {}", url);
+            handle_https_credentials(username_from_url)
         }
     });
 
