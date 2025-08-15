@@ -71,7 +71,7 @@ pub fn test_git_pull_in_tmp(repo_path: &Path) -> Result<()> {
 
     // Clone the repository into the temp directory
     info!("Testing git pull by cloning {} into temporary directory", remote_url);
-    let _temp_repo = Repository::clone(remote_url, &temp_dir)?;
+    Repository::clone(remote_url, &temp_dir)?;
 
     // Clean up the temporary directory
     fs::remove_dir_all(&temp_dir)?;
