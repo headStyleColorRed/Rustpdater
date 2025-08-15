@@ -3,6 +3,8 @@ use super::repo_config::RepoCfg;
 use git2::{Repository, Cred, RemoteCallbacks, Error as GitError};
 use std::process::Command;
 use std::path::Path;
+use std::fs;
+use std::env;
 use log::{debug, info, warn};
 
 pub fn try_update(repo: &RepoCfg) -> Result<()> {
@@ -84,92 +86,28 @@ pub fn try_update(repo: &RepoCfg) -> Result<()> {
     Ok(())
 }
 
-/// Test if SSH authentication works for a given SSH URL and username.
-/// Returns Ok(()) if authentication is successful, otherwise returns an error.
-pub fn test_ssh_connection(ssh_url: &str, username: Option<&str>) -> std::result::Result<(), String> {
-    // Only allow SSH URLs
-    if !(ssh_url.starts_with("git@") || ssh_url.starts_with("ssh://")) {
-        return Err("Provided URL is not an SSH URL".to_string());
-    }
+/// Test git pull in a temporary folder to verify git operations work
+pub fn test_git_pull_in_tmp(repo_path: &Path) -> Result<()> {
+    // Get the remote URL from the existing repository
+    let repo = Repository::open(repo_path)?;
+    let remote = repo.find_remote("origin")?;
+    let remote_url = remote.url().ok_or_else(|| {
+        GitError::from_str("Could not get remote URL")
+    })?;
 
-    let username = username.unwrap_or("git");
+    // Create a temporary directory
+    let temp_dir = env::temp_dir().join(format!("rustpdater_test_{}",
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()));
 
-    // Try SSH key from SSH agent first
-    if let Ok(_ssh_key) = Cred::ssh_key_from_agent(username) {
-        // Try to open a session using ssh -T
-        let output = Command::new("ssh")
-            .arg("-T")
-            .arg(format!("{}@{}", username, extract_host_from_ssh_url(ssh_url)))
-            .output();
+    fs::create_dir(&temp_dir)?;
 
-        match output {
-            Ok(output) => {
-                if output.status.success() {
-                    return Ok(());
-                } else {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    return Err(format!("SSH agent authentication failed: {}", stderr));
-                }
-            }
-            Err(e) => {
-                return Err(format!("Failed to run ssh command: {}", e));
-            }
-        }
-    }
+    // Clone the repository into the temp directory
+    info!("Testing git pull by cloning {} into temporary directory", remote_url);
+    let _temp_repo = Repository::clone(remote_url, &temp_dir)?;
 
-    // Try default SSH key locations
-    let ssh_key_paths = [
-        format!("{}/.ssh/id_rsa", std::env::var("HOME").unwrap_or_else(|_| "~".to_string())),
-        format!("{}/.ssh/id_ed25519", std::env::var("HOME").unwrap_or_else(|_| "~".to_string())),
-        format!("{}/.ssh/id_ecdsa", std::env::var("HOME").unwrap_or_else(|_| "~".to_string())),
-    ];
+    // Clean up the temporary directory
+    fs::remove_dir_all(&temp_dir)?;
 
-    for key_path in &ssh_key_paths {
-        if Path::new(key_path).exists() {
-            let output = Command::new("ssh")
-                .arg("-i")
-                .arg(key_path)
-                .arg("-T")
-                .arg(format!("{}@{}", username, extract_host_from_ssh_url(ssh_url)))
-                .output();
-
-            match output {
-                Ok(output) => {
-                    if output.status.success() {
-                        return Ok(());
-                    } else {
-                        let stderr = String::from_utf8_lossy(&output.stderr);
-                        // Try next key
-                        continue;
-                    }
-                }
-                Err(e) => {
-                    // Try next key
-                    continue;
-                }
-            }
-        }
-    }
-
-    Err("SSH authentication failed for all known methods".to_string())
-}
-
-/// Helper to extract the host from an SSH URL (git@host:path or ssh://host/path)
-fn extract_host_from_ssh_url(url: &str) -> String {
-    if url.starts_with("git@") {
-        // git@host:path
-        if let Some(at_pos) = url.find('@') {
-            if let Some(colon_pos) = url[at_pos..].find(':') {
-                return url[at_pos + 1..at_pos + colon_pos].to_string();
-            }
-        }
-    } else if url.starts_with("ssh://") {
-        // ssh://host/path
-        let without_prefix = &url[6..];
-        if let Some(slash_pos) = without_prefix.find('/') {
-            return without_prefix[..slash_pos].to_string();
-        }
-    }
-    // Fallback: return the whole url
-    url.to_string()
+    info!("Git pull test successful in temporary directory");
+    Ok(())
 }
