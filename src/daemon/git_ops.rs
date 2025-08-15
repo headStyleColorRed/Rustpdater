@@ -86,6 +86,96 @@ pub fn try_update(repo: &RepoCfg) -> Result<()> {
     Ok(())
 }
 
+/// Test if SSH authentication works for a given SSH URL and username.
+/// Returns Ok(()) if authentication is successful, otherwise returns an error.
+pub fn test_ssh_connection(ssh_url: &str, username: Option<&str>) -> std::result::Result<(), String> {
+    // Only allow SSH URLs
+    if !(ssh_url.starts_with("git@") || ssh_url.starts_with("ssh://")) {
+        return Err("Provided URL is not an SSH URL".to_string());
+    }
+
+    let username = username.unwrap_or("git");
+
+    // Try SSH key from SSH agent first
+    if let Ok(_ssh_key) = Cred::ssh_key_from_agent(username) {
+        // Try to open a session using ssh -T
+        let output = Command::new("ssh")
+            .arg("-T")
+            .arg(format!("{}@{}", username, extract_host_from_ssh_url(ssh_url)))
+            .output();
+
+        match output {
+            Ok(output) => {
+                if output.status.success() {
+                    return Ok(());
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    return Err(format!("SSH agent authentication failed: {}", stderr));
+                }
+            }
+            Err(e) => {
+                return Err(format!("Failed to run ssh command: {}", e));
+            }
+        }
+    }
+
+    // Try default SSH key locations
+    let ssh_key_paths = [
+        format!("{}/.ssh/id_rsa", std::env::var("HOME").unwrap_or_else(|_| "~".to_string())),
+        format!("{}/.ssh/id_ed25519", std::env::var("HOME").unwrap_or_else(|_| "~".to_string())),
+        format!("{}/.ssh/id_ecdsa", std::env::var("HOME").unwrap_or_else(|_| "~".to_string())),
+    ];
+
+    for key_path in &ssh_key_paths {
+        if Path::new(key_path).exists() {
+            let output = Command::new("ssh")
+                .arg("-i")
+                .arg(key_path)
+                .arg("-T")
+                .arg(format!("{}@{}", username, extract_host_from_ssh_url(ssh_url)))
+                .output();
+
+            match output {
+                Ok(output) => {
+                    if output.status.success() {
+                        return Ok(());
+                    } else {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        // Try next key
+                        continue;
+                    }
+                }
+                Err(e) => {
+                    // Try next key
+                    continue;
+                }
+            }
+        }
+    }
+
+    Err("SSH authentication failed for all known methods".to_string())
+}
+
+/// Helper to extract the host from an SSH URL (git@host:path or ssh://host/path)
+fn extract_host_from_ssh_url(url: &str) -> String {
+    if url.starts_with("git@") {
+        // git@host:path
+        if let Some(at_pos) = url.find('@') {
+            if let Some(colon_pos) = url[at_pos..].find(':') {
+                return url[at_pos + 1..at_pos + colon_pos].to_string();
+            }
+        }
+    } else if url.starts_with("ssh://") {
+        // ssh://host/path
+        let without_prefix = &url[6..];
+        if let Some(slash_pos) = without_prefix.find('/') {
+            return without_prefix[..slash_pos].to_string();
+        }
+    }
+    // Fallback: return the whole url
+    url.to_string()
+}
+
 fn handle_https_credentials(username_from_url: Option<&str>) -> std::result::Result<Cred, GitError> {
     match read_git_credentials() {
         Ok(Some(credentials)) => {
