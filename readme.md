@@ -38,6 +38,9 @@ vim /etc/rustpdater.toml
 # 3 – Run once to verify (stdout shows info logs; errors go to stderr)
 # The binary will be installed to ~/.cargo/bin
 RUST_LOG=info ~/.cargo/bin/rustpdater --config-file /etc/rustpdater.toml
+
+# 4 – Run the daemon using systemd
+[Running under systemd](#-running-under-systemd)
 ```
 
 Add a systemd unit to keep it running after reboots (see below).
