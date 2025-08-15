@@ -32,7 +32,6 @@ async fn watch_single_repo(repo: &RepoCfg) -> Result<()> {
     loop {
         if let Err(error) = try_update(repo) {
             error!("watcher error on {}: {}", repo.path.display(), error);
-            std::process::exit(1);
         }
         time::sleep(interval).await;
     }
