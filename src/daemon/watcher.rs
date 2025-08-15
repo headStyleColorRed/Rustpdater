@@ -47,12 +47,25 @@ fn try_update(repo: &RepoCfg) -> Result<()> {
 
     let mut callbacks = RemoteCallbacks::new();
     callbacks.credentials(|_url, username_from_url, _allowed_types| {
-        if let Some(credentials) = read_git_credentials() {
-            // Use username from credentials file, fallback to URL username
-            let username = username_from_url.unwrap_or(&credentials.username);
-            return Cred::userpass_plaintext(username, &credentials.password);
+        match read_git_credentials() {
+            Ok(Some(credentials)) => {
+                // Use username from credentials file, fallback to URL username
+                let username = username_from_url.unwrap_or(&credentials.username);
+                Cred::userpass_plaintext(username, &credentials.password)
+            }
+            Ok(None) => {
+                // File exists but no valid credentials found
+                Err(git2::Error::from_str("No valid credentials found in ~/.git-credentials"))
+            }
+            Err(CredentialsError::FileNotFound) => {
+                // File doesn't exist
+                Err(git2::Error::from_str("~/.git-credentials doesn't exist"))
+            }
+            Err(CredentialsError::ReadError) => {
+                // File exists but couldn't be read
+                Err(git2::Error::from_str("Could not read ~/.git-credentials"))
+            }
         }
-        Err(git2::Error::from_str("No credentials found"))
     });
 
     let mut fetch_options = git2::FetchOptions::new();
@@ -94,13 +107,17 @@ struct GitCredentials {
     password: String,
 }
 
-fn read_git_credentials() -> Option<GitCredentials> {
+#[derive(Debug)]
+enum CredentialsError {
+    FileNotFound,
+    ReadError,
+}
+
+fn read_git_credentials() -> std::result::Result<Option<GitCredentials>, CredentialsError> {
     let credentials_path = std::env::var("HOME")
         .ok()
         .map(|home| format!("{}/.git-credentials", home))
         .unwrap_or_else(|| "~/.git-credentials".to_string());
-
-
 
     // Handle tilde expansion manually since we don't want to add shellexpand dependency
     let credentials_path = if credentials_path.starts_with("~/") {
@@ -113,12 +130,12 @@ fn read_git_credentials() -> Option<GitCredentials> {
     };
 
     if !Path::new(&credentials_path).exists() {
-        return None;
+        return Err(CredentialsError::FileNotFound);
     }
 
     let content = match fs::read_to_string(&credentials_path) {
         Ok(content) => content,
-        Err(_) => return None,
+        Err(_) => return Err(CredentialsError::ReadError),
     };
 
     // Parse git-credentials format: https://username:token@hostname
@@ -129,11 +146,11 @@ fn read_git_credentials() -> Option<GitCredentials> {
         }
 
         if let Some(credentials) = parse_git_credential_line(line) {
-            return Some(credentials);
+            return Ok(Some(credentials));
         }
     }
 
-    None
+    Ok(None)
 }
 
 fn parse_git_credential_line(line: &str) -> Option<GitCredentials> {
