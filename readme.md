@@ -40,7 +40,7 @@ vim /etc/rustpdater.toml
 RUST_LOG=info ~/.cargo/bin/rustpdater --config-file /etc/rustpdater.toml
 
 # 4 – Run the daemon using systemd
-[Running under systemd](#-running-under-systemd)
+# Check the [Running under systemd] section below
 ```
 
 Add a systemd unit to keep it running after reboots (see below).
