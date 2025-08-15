@@ -55,7 +55,6 @@ on_change = "cargo run --release"
 
 [[repos]]
 path      = "/srv/app_2"
-remote    = "upstream"          # optional (default "origin")
 branch    = "master"
 interval  = 300                 # 5 min
 on_change = "systemctl restart app_2.service"
@@ -82,7 +81,7 @@ Description=Rustpdater – Git auto‑updater
 After=network.target
 
 [Service]
-ExecStart=/usr/local/bin/rustpdater --config /etc/rustpdater.toml
+ExecStart=/usr/local/bin/rustpdater --config-file /etc/rustpdater.toml
 Restart=always
 RestartSec=5
 
@@ -90,10 +89,11 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
+Reload systemd, start the service and watch the logs:
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now rustpdater
-journalctl -u rustpdater -f   # live logs
+journalctl -u rustpdater -f
 ```
 
 > 📝 stdout shows normal activity; errors go to stderr and are marked red in journalctl.
