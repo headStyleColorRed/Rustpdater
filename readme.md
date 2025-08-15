@@ -100,9 +100,7 @@ journalctl -u rustpdater -f
 
 ## 🔒 Security & authentication
 
-- 🔑 **Private repos** – configure SSH deploy keys (the daemon honours `~/.ssh/config`, `GIT_SSH_COMMAND`, etc.)
-- 🔐 **HTTPS tokens** – set `GIT_ASKPASS` or embed the token in the remote URL
-- 👮 The watcher itself runs with the privileges of its service account; follow least‑privilege best practices
+- 🔑 **Private repos** – configure SSH deploy keys (the daemon inherits your shell's git and SSH configuration)
 
 ## 🔍 Troubleshooting
 
@@ -112,7 +110,7 @@ journalctl -u rustpdater -f
 | Repo never updates | Confirm interval isn't huge, verify branch name matches remote |
 | Local changes overwritten | The watcher forces checkout; deploy from a clean clone, not your dev copy |
 
-> 🐛 Enable `RUST_LOG=debug` for verbose output (integrated via env_logger)
+> 🐛 Enable `RUST_LOG=info` for verbose output (integrated via env_logger)
 
 ## 🗺️ Roadmap
 - Adding tests
