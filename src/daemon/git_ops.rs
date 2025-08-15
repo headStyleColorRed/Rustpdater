@@ -22,6 +22,9 @@ fn normalize_git_url(url: &str) -> String {
 
 /// Execute a git command and return the result
 fn execute_git_command(repo_path: &Path, args: &[&str]) -> Result<()> {
+    let command_str = format!("git {}", args.join(" "));
+    info!("Executing command: {} (in directory: {})", command_str, repo_path.display());
+
     let output = Command::new("git")
         .args(args)
         .current_dir(repo_path)
@@ -30,7 +33,7 @@ fn execute_git_command(repo_path: &Path, args: &[&str]) -> Result<()> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(super::errors::WatchError::GitCommandFailed {
-            command: format!("git {}", args.join(" ")),
+            command: command_str,
             stderr: stderr.to_string(),
         });
     }
@@ -101,12 +104,19 @@ fn get_fetch_head(repo_path: &Path) -> Result<String> {
     Ok(fetch_head)
 }
 
-pub fn try_update(repo: &RepoCfg) -> Result<()> {
-    debug!("Checking repo {} for updates", repo.path.display());
+pub fn start_watching(repo: &RepoCfg) -> Result<()> {
+    info!("_ _ _ _ _ _ _ _ _ _  WATCHING  _ _ _ _ _ _ _ _ _ _");
+    info!("Checking repo {} for updates", repo.path.display());
 
-    // Fetch with authentication (SSH agent will be used automatically)
-    info!("Fetching '{}' for {}", repo.branch, repo.path.display());
-    execute_git_command(&repo.path, &["fetch", "origin", &repo.branch])?;
+    // Get and normalize the remote URL
+    let remote_url = get_remote_url(&repo.path)?;
+    let normalized_url = normalize_git_url(&remote_url);
+    info!("Original remote URL: {}", remote_url);
+    info!("Normalized URL: {}", normalized_url);
+
+    // Fetch with authentication (SSH agent will be used automatically), using the normalized URL
+    info!("Fetching '{}' for {} using normalized URL", repo.branch, repo.path.display());
+    execute_git_command(&repo.path, &["fetch", &normalized_url, &repo.branch])?;
 
     // Get current HEAD and FETCH_HEAD
     let local_head = get_current_head(&repo.path)?;
@@ -114,7 +124,8 @@ pub fn try_update(repo: &RepoCfg) -> Result<()> {
 
     // If there's nothing new, escape
     if fetch_head == local_head {
-        debug!("No changes detected for {}", repo.path.display());
+        info!("No changes detected for {}", repo.path.display());
+        info!("_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _");
         return Ok(());
     }
 
@@ -131,6 +142,7 @@ pub fn try_update(repo: &RepoCfg) -> Result<()> {
             .status()?;
     }
 
+    info!("_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _");
     Ok(())
 }
 

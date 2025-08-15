@@ -24,7 +24,7 @@ pub async fn start_watching_repos(repos: &[RepoCfg]) -> Result<()> {
 
 async fn watch_single_repo(repo: &RepoCfg) -> Result<()> {
     let interval = Duration::from_secs(repo.interval);
-    info!("Watching repo '{}' (branch '{}') every {}s", repo.path.display(), repo.branch, repo.interval);
+    info!("Watching repo '{}' (branch '{}') every {}s\n", repo.path.display(), repo.branch, repo.interval);
 
     // Let's first test the SSH connection by doing a git pull in a temp folder
     if let Err(e) = git_ops::test_git_pull_in_tmp(&repo.path) {
@@ -33,7 +33,7 @@ async fn watch_single_repo(repo: &RepoCfg) -> Result<()> {
     }
 
     loop {
-        if let Err(error) = git_ops::try_update(repo) {
+        if let Err(error) = git_ops::start_watching(repo) {
             error!("watcher error on {}: {}", repo.path.display(), error);
         }
         time::sleep(interval).await;
