@@ -1,6 +1,6 @@
 use super::errors::Result;
 use super::repo_config::RepoCfg;
-use git2::{Repository, Cred, RemoteCallbacks};
+use git2::{Repository, Cred, RemoteCallbacks, Error as GitError};
 use std::process::Command;
 use std::time::Duration;
 use std::fs;
@@ -47,39 +47,35 @@ fn try_update(repo: &RepoCfg) -> Result<()> {
     let mut remote = repository.find_remote("origin")?;
 
     let mut callbacks = RemoteCallbacks::new();
-    callbacks.credentials(|_url, username_from_url, _allowed_types| {
-        match read_git_credentials() {
-            Ok(Some(credentials)) => {
-                // Use username from credentials file, fallback to URL username
-                let username = username_from_url.unwrap_or(&credentials.username);
-                Cred::userpass_plaintext(username, &credentials.password)
+    callbacks.credentials(|url, username_from_url, _allowed_types| {
+        // Check if this is an SSH URL
+        if url.starts_with("git@") || url.starts_with("ssh://") {
+            // Try SSH key authentication first
+            if let Ok(ssh_key) = Cred::ssh_key_from_agent(username_from_url.unwrap_or("git")) {
+                return Ok(ssh_key);
             }
-            Ok(None) => {
-                // File exists but no valid credentials found
-                warn!("No valid credentials found in ~/.git-credentials, prompting for new credentials");
-                match prompt_and_create_credentials() {
-                    Ok(credentials) => {
-                        let username = username_from_url.unwrap_or(&credentials.username);
-                        Cred::userpass_plaintext(username, &credentials.password)
+
+            // Try default SSH key locations
+            let ssh_key_paths = [
+                format!("{}/.ssh/id_rsa", std::env::var("HOME").unwrap_or_else(|_| "~".to_string())),
+                format!("{}/.ssh/id_ed25519", std::env::var("HOME").unwrap_or_else(|_| "~".to_string())),
+                format!("{}/.ssh/id_ecdsa", std::env::var("HOME").unwrap_or_else(|_| "~".to_string())),
+            ];
+
+            for key_path in &ssh_key_paths {
+                if Path::new(key_path).exists() {
+                    if let Ok(ssh_key) = Cred::ssh_key(username_from_url.unwrap_or("git"), None, Path::new(key_path), None) {
+                        return Ok(ssh_key);
                     }
-                    Err(_) => Err(git2::Error::from_str("Failed to get credentials from user"))
                 }
             }
-            Err(CredentialsError::FileNotFound) => {
-                // File doesn't exist, prompt to create it
-                warn!("~/.git-credentials doesn't exist, prompting to create it");
-                match prompt_and_create_credentials() {
-                    Ok(credentials) => {
-                        let username = username_from_url.unwrap_or(&credentials.username);
-                        Cred::userpass_plaintext(username, &credentials.password)
-                    }
-                    Err(_) => Err(git2::Error::from_str("Failed to create credentials file"))
-                }
-            }
-            Err(CredentialsError::ReadError) => {
-                // File exists but couldn't be read
-                Err(git2::Error::from_str("Could not read ~/.git-credentials"))
-            }
+
+            // If SSH keys don't work, try to fall back to HTTPS authentication
+            warn!("SSH authentication failed, falling back to HTTPS authentication");
+            return handle_https_credentials(username_from_url);
+        } else {
+            // HTTPS URL - use existing HTTPS authentication logic
+            return handle_https_credentials(username_from_url);
         }
     });
 
@@ -114,6 +110,42 @@ fn try_update(repo: &RepoCfg) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn handle_https_credentials(username_from_url: Option<&str>) -> std::result::Result<Cred, GitError> {
+    match read_git_credentials() {
+        Ok(Some(credentials)) => {
+            // Use username from credentials file, fallback to URL username
+            let username = username_from_url.unwrap_or(&credentials.username);
+            Cred::userpass_plaintext(username, &credentials.password)
+        }
+        Ok(None) => {
+            // File exists but no valid credentials found
+            warn!("No valid credentials found in ~/.git-credentials, prompting for new credentials");
+            match prompt_and_create_credentials() {
+                Ok(credentials) => {
+                    let username = username_from_url.unwrap_or(&credentials.username);
+                    Cred::userpass_plaintext(username, &credentials.password)
+                }
+                Err(_) => Err(GitError::from_str("Failed to get credentials from user"))
+            }
+        }
+        Err(CredentialsError::FileNotFound) => {
+            // File doesn't exist, prompt to create it
+            warn!("~/.git-credentials doesn't exist, prompting to create it");
+            match prompt_and_create_credentials() {
+                Ok(credentials) => {
+                    let username = username_from_url.unwrap_or(&credentials.username);
+                    Cred::userpass_plaintext(username, &credentials.password)
+                }
+                Err(_) => Err(GitError::from_str("Failed to create credentials file"))
+            }
+        }
+        Err(CredentialsError::ReadError) => {
+            // File exists but couldn't be read
+            Err(GitError::from_str("Could not read ~/.git-credentials"))
+        }
+    }
 }
 
 #[derive(Debug)]

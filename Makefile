@@ -1,7 +1,7 @@
 # Rustpdater Makefile
 # A lightweight Git repository auto-updater daemon
 
-.PHONY: help install build test clean release check format lint docker-build docker-run
+.PHONY: help install run
 
 # Default target
 help:
@@ -10,6 +10,7 @@ help:
 	@echo "Available commands:"
 	@echo "  help        - Show this help message"
 	@echo "  install     - Install rustpdater globally using cargo"
+	@echo "  run         - Run rustpdater"
 	@echo ""
 	@echo "Installation:"
 	@echo "  make install    # Install from GitHub repository"
@@ -25,3 +26,8 @@ install:
 	cargo install --git https://github.com/headStyleColorRed/Rustpdater --locked
 	@echo "✅ Installation complete! Binary available at ~/.cargo/bin/rustpdater"
 	@echo ""
+
+# Run rustpdater
+run:
+	@echo "🚀 Running rustpdater..."
+	cargo run
