@@ -4,7 +4,7 @@ use std::process::Command;
 use std::path::Path;
 use std::fs;
 use std::env;
-use log::{debug, info, warn};
+use log::{info, warn};
 
 /// Normalize git remote URL to fix malformed URLs but preserve SSH URLs
 fn normalize_git_url(url: &str) -> String {
