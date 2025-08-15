@@ -5,8 +5,9 @@ use std::process::Command;
 use std::time::Duration;
 use std::fs;
 use std::path::Path;
+use std::io::{self, Write};
 use tokio::{task, time};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 
 pub async fn start_watching_repos(repos: &[RepoCfg]) -> Result<()> {
     let mut tasks = Vec::new();
@@ -55,11 +56,25 @@ fn try_update(repo: &RepoCfg) -> Result<()> {
             }
             Ok(None) => {
                 // File exists but no valid credentials found
-                Err(git2::Error::from_str("No valid credentials found in ~/.git-credentials"))
+                warn!("No valid credentials found in ~/.git-credentials, prompting for new credentials");
+                match prompt_and_create_credentials() {
+                    Ok(credentials) => {
+                        let username = username_from_url.unwrap_or(&credentials.username);
+                        Cred::userpass_plaintext(username, &credentials.password)
+                    }
+                    Err(_) => Err(git2::Error::from_str("Failed to get credentials from user"))
+                }
             }
             Err(CredentialsError::FileNotFound) => {
-                // File doesn't exist
-                Err(git2::Error::from_str("~/.git-credentials doesn't exist"))
+                // File doesn't exist, prompt to create it
+                warn!("~/.git-credentials doesn't exist, prompting to create it");
+                match prompt_and_create_credentials() {
+                    Ok(credentials) => {
+                        let username = username_from_url.unwrap_or(&credentials.username);
+                        Cred::userpass_plaintext(username, &credentials.password)
+                    }
+                    Err(_) => Err(git2::Error::from_str("Failed to create credentials file"))
+                }
             }
             Err(CredentialsError::ReadError) => {
                 // File exists but couldn't be read
@@ -113,21 +128,85 @@ enum CredentialsError {
     ReadError,
 }
 
-fn read_git_credentials() -> std::result::Result<Option<GitCredentials>, CredentialsError> {
-    let credentials_path = std::env::var("HOME")
+fn prompt_and_create_credentials() -> std::result::Result<GitCredentials, Box<dyn std::error::Error>> {
+    println!("\n=== Git Credentials Setup ===");
+    println!("The ~/.git-credentials file is missing or empty.");
+    println!("This file is needed to authenticate with GitHub repositories.");
+
+    // Ask if user wants to create the file
+    print!("Would you like to create the ~/.git-credentials file? (y/n): ");
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+
+    if !input.trim().to_lowercase().starts_with('y') {
+        return Err("User declined to create credentials file".into());
+    }
+
+    // Get username
+    print!("Enter your GitHub username: ");
+    io::stdout().flush()?;
+    let mut username = String::new();
+    io::stdin().read_line(&mut username)?;
+    let username = username.trim().to_string();
+
+    if username.is_empty() {
+        return Err("Username cannot be empty".into());
+    }
+
+    // Get token
+    print!("Enter your GitHub personal access token: ");
+    io::stdout().flush()?;
+    let mut token = String::new();
+    io::stdin().read_line(&mut token)?;
+    let token = token.trim().to_string();
+
+    if token.is_empty() {
+        return Err("Token cannot be empty".into());
+    }
+
+    // Create credentials
+    let credentials = GitCredentials {
+        username: username.clone(),
+        password: token.clone(),
+    };
+
+    // Create the file
+    let credentials_path = get_credentials_path();
+    let credentials_content = format!("https://{}:{}@github.com\n", username, token);
+
+    // Create parent directory if it doesn't exist
+    if let Some(parent) = Path::new(&credentials_path).parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    fs::write(&credentials_path, credentials_content)?;
+
+    // Set proper permissions (read/write for owner only)
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&credentials_path)?.permissions();
+        perms.set_mode(0o600);
+        fs::set_permissions(&credentials_path, perms)?;
+    }
+
+    println!("✓ Created ~/.git-credentials with your credentials");
+    println!("✓ File permissions set to owner-only access");
+
+    Ok(credentials)
+}
+
+fn get_credentials_path() -> String {
+    std::env::var("HOME")
         .ok()
         .map(|home| format!("{}/.git-credentials", home))
-        .unwrap_or_else(|| "~/.git-credentials".to_string());
+        .unwrap_or_else(|| "~/.git-credentials".to_string())
+}
 
-    // Handle tilde expansion manually since we don't want to add shellexpand dependency
-    let credentials_path = if credentials_path.starts_with("~/") {
-        std::env::var("HOME")
-            .ok()
-            .map(|home| format!("{}/{}", home, &credentials_path[2..]))
-            .unwrap_or(credentials_path)
-    } else {
-        credentials_path
-    };
+fn read_git_credentials() -> std::result::Result<Option<GitCredentials>, CredentialsError> {
+    let credentials_path = get_credentials_path();
 
     if !Path::new(&credentials_path).exists() {
         return Err(CredentialsError::FileNotFound);
